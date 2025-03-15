@@ -32,14 +32,22 @@ class AdminPanelProvider extends PanelProvider
             ->login()
             ->brandName('Sistema de Ventas')
             ->colors([
-                'danger' => '#dc2626',
-                'gray' => '#6b7280',
-                'info' => '#3b82f6',
-                'primary' => '#f59e0b',
-                'success' => '#16a34a',
-                'warning' => '#eab308',
+                'primary' => [
+                    50 => '#eef2ff',
+                    100 => '#e0e7ff',
+                    200 => '#c7d2fe',
+                    300 => '#a5b4fc',
+                    400 => '#818cf8',
+                    500 => '#6366f1',
+                    600 => '#4f46e5',
+                    700 => '#4338ca',
+                    800 => '#3730a3',
+                    900 => '#312e81',
+                    950 => '#1e1b4b',
+                ],
             ])
-            ->sidebarCollapsibleOnDesktop()
+            ->sidebarCollapsibleOnDesktop(false)
+            ->sidebarWidth('17rem')
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([
@@ -56,6 +64,7 @@ class AdminPanelProvider extends PanelProvider
                 'Inventario',
                 'Ventas',
             ])
+            ->maxContentWidth('full')
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
