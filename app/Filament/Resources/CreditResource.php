@@ -26,16 +26,17 @@ class CreditResource extends Resource
                     ->label('Cliente')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('total_amount')
-                    ->money('usd')
+                    ->numeric()
+                    ->formatStateUsing(fn ($state) => '$ ' . number_format($state, 0, ',', '.'))
                     ->label('Total'),
                 Tables\Columns\TextColumn::make('paid_amount')
-                    ->money('usd')
-                    ->label('Pagado')
-                    ->getStateUsing(fn ($record) => $record->installments()->where('status', 'paid')->sum('amount')),
+                    ->numeric()
+                    ->formatStateUsing(fn ($record) => '$ ' . number_format($record->installments()->where('status', 'paid')->sum('amount'), 0, ',', '.'))
+                    ->label('Pagado'),
                 Tables\Columns\TextColumn::make('remaining_amount')
-                    ->money('usd')
-                    ->label('Pendiente')
-                    ->getStateUsing(fn ($record) => $record->total_amount - $record->installments()->where('status', 'paid')->sum('amount')),
+                    ->numeric()
+                    ->formatStateUsing(fn ($record) => '$ ' . number_format($record->total_amount - $record->installments()->where('status', 'paid')->sum('amount'), 0, ',', '.'))
+                    ->label('Pendiente'),
                 Tables\Columns\TextColumn::make('installments')
                     ->label('Cuotas Totales'),
                 Tables\Columns\TextColumn::make('paid_installments_count')

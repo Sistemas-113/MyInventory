@@ -18,8 +18,8 @@ use Illuminate\View\Middleware\ShareErrorsFromSession;
 use App\Filament\Resources\SaleResource;
 use App\Filament\Resources\ClientResource;
 use App\Filament\Resources\ProductResource;
-use App\Filament\Resources\CategoryResource;
 use App\Filament\Resources\CreditResource;
+use App\Filament\Resources\ProviderResource;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -54,8 +54,7 @@ class AdminPanelProvider extends PanelProvider
                 Pages\Dashboard::class,
             ])
             ->resources([
-                CategoryResource::class,
-                ProductResource::class,
+                ProviderResource::class,
                 ClientResource::class,
                 SaleResource::class,
                 CreditResource::class,

@@ -12,10 +12,10 @@ return new class extends Migration
             $table->id();
             $table->foreignId('sale_id')->constrained()->onDelete('cascade');
             $table->integer('installment_number');
-            $table->decimal('amount', 10, 2);
+            $table->decimal('amount', 20, 2);
             $table->date('due_date');
+            $table->enum('status', ['pending', 'paid', 'overdue'])->default('pending');
             $table->date('paid_date')->nullable();
-            $table->enum('status', ['pending', 'paid'])->default('pending');
             $table->timestamps();
         });
     }

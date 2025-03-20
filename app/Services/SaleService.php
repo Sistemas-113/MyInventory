@@ -13,166 +13,183 @@ class SaleService
     public function createSale(array $data): Sale
     {
         try {
-            Log::debug('Iniciando createSale con datos:', ['data' => $data]);
+            // Validar datos básicos y detalles antes de proceder
+            $this->validateBasicData($data);
+            $this->validateDetails($data);
 
             return DB::transaction(function () use ($data) {
-                // Crear venta base
-                $sale = Sale::create([
-                    'client_id' => $data['client_id'],
-                    'payment_type' => $data['payment_type'],
-                    'total_amount' => $data['total_amount'],
-                    'status' => 'pending',
-                    'interest_rate' => $data['interest_rate'] ?? null,
-                    'installments' => $data['installments'] ?? null,
-                    'first_payment_date' => $data['first_payment_date'] ?? null,
-                ]);
-
-                Log::info('Venta base creada', [
-                    'sale_id' => $sale->id,
-                    'total' => $sale->total_amount,
-                    'installments' => $sale->installments
-                ]);
-
-                // Si es venta a crédito, crear las cuotas
-                if ($sale->payment_type === 'credit' && $sale->installments > 0) {
-                    $this->createInstallments($sale, $sale->total_amount, [
-                        'installments' => $sale->installments,
-                        'first_payment_date' => $sale->first_payment_date
-                    ]);
+                // Calcular los totales finales
+                $totals = $this->calculateTotals($data);
+                
+                // Crear la venta
+                $sale = $this->createSaleRecord($data, $totals);
+                
+                // Crear los detalles
+                $this->createSaleDetails($sale, $data['details']);
+                
+                // Si es crédito, crear las cuotas
+                if ($this->isCreditSale($sale)) {
+                    $this->createCreditInstallments($sale, $totals['finalTotal']);
                 }
 
                 return $sale;
             });
         } catch (\Exception $e) {
-            Log::error('Error en createSale', [
-                'message' => $e->getMessage(),
-                'data' => $data
-            ]);
+            Log::error('Error en createSale', ['message' => $e->getMessage(), 'data' => $data]);
             throw $e;
         }
     }
 
-    private function createBaseSale(array $data): Sale
+    protected function calculateTotals(array $data): array
+    {
+        $subtotal = $this->calculateSubTotal($data['details']);
+        $initialPayment = floatval($data['initial_payment']);
+        $remaining = max(0, $subtotal - $initialPayment);
+        
+        $finalTotal = $remaining;
+        if ($data['payment_type'] === 'credit' && !empty($data['interest_rate'])) {
+            $interest = ($remaining * floatval($data['interest_rate'])) / 100;
+            $finalTotal += $interest;
+        }
+
+        return [
+            'subtotal' => $subtotal,
+            'remaining' => $remaining,
+            'finalTotal' => $finalTotal
+        ];
+    }
+
+    protected function createSaleRecord(array $data, array $totals): Sale
+    {
+        return Sale::create([
+            'client_id' => $data['client_id'],
+            'payment_type' => $data['payment_type'],
+            'total_amount' => $totals['finalTotal'],
+            'status' => 'pending',
+            'interest_rate' => $data['interest_rate'] ?? null,
+            'installments' => $data['installments'] ?? null,
+            'first_payment_date' => $data['first_payment_date'] ?? null,
+            'initial_payment' => $data['initial_payment'] ?? 0,
+        ]);
+    }
+
+    protected function createSaleDetails(Sale $sale, array $details): void
     {
         try {
-            $saleData = [
-                'client_id' => $data['client_id'],
-                'payment_type' => $data['payment_type'],
-                'status' => 'pending',
-                'interest_rate' => $data['interest_rate'] ?? null,
-                'installments' => $data['installments'] ?? null,
-                'first_payment_date' => $data['first_payment_date'] ?? null,
-            ];
-
-            Log::info('Creando venta base con datos:', $saleData);
-            
-            return Sale::create($saleData);
-        } catch (\Exception $e) {
-            Log::error('Error creando venta base', [
-                'error' => $e->getMessage(),
-                'data' => $saleData ?? []
-            ]);
-            throw $e;
-        }
-    }
-
-    private function processSaleDetails(Sale $sale, array $details): float
-    {
-        $subtotal = 0;
-
-        foreach ($details as $index => $detail) {
-            try {
-                Log::debug("Procesando detalle #{$index}", $detail);
-
-                // Validar datos del detalle
-                if (!isset($detail['product_id'], $detail['quantity'], $detail['unit_price'])) {
-                    Log::error("Detalle inválido", ['detail' => $detail]);
-                    throw new \Exception("Detalle de producto incompleto");
+            foreach ($details as $detail) {
+                // Validar datos mínimos requeridos
+                if (!isset($detail['product_name'], $detail['quantity'], $detail['unit_price'])) {
+                    throw new Halt('Datos de producto incompletos');
                 }
 
-                $product = Product::findOrFail($detail['product_id']);
-                $this->validateStock($product, $detail['quantity']);
-
-                $detailSubtotal = $this->createSaleDetail($sale, $product, $detail);
-                $subtotal += $detailSubtotal;
-
-                Log::info("Detalle #{$index} procesado", [
-                    'product' => $product->name,
-                    'subtotal' => $detailSubtotal
+                // Crear el detalle de venta
+                $sale->details()->create([
+                    'provider_id' => $detail['provider_id'] ?? null,
+                    'product_name' => $detail['product_name'],
+                    'product_description' => $detail['product_description'] ?? null,
+                    'identifier_type' => $detail['identifier_type'] ?? null,
+                    'identifier' => $detail['identifier'] ?? null,
+                    'quantity' => intval($detail['quantity']),
+                    'unit_price' => floatval($detail['unit_price']),
+                    'subtotal' => floatval($detail['quantity']) * floatval($detail['unit_price']),
                 ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('Error creando detalles de venta', [
+                'error' => $e->getMessage(),
+                'sale_id' => $sale->id,
+                'details' => $details
+            ]);
+            throw new Halt('Error al crear los detalles de la venta: ' . $e->getMessage());
+        }
+    }
 
-            } catch (\Exception $e) {
-                Log::error("Error procesando detalle #{$index}", [
-                    'detail' => $detail,
-                    'error' => $e->getMessage()
-                ]);
-                throw $e;
+    protected function isCreditSale(Sale $sale): bool
+    {
+        return $sale->payment_type === 'credit' && $sale->installments > 0;
+    }
+
+    private function validateBasicData(array $data): void
+    {
+        if (!isset($data['client_id'], $data['payment_type'])) {
+            throw new Halt('Datos básicos de venta incompletos');
+        }
+
+        if ($data['payment_type'] === 'credit') {
+            if (!isset($data['installments'], $data['first_payment_date'])) {
+                throw new Halt('Datos de crédito incompletos');
+            }
+            if ($data['installments'] < 1) {
+                throw new Halt('El número de cuotas debe ser mayor a 0');
             }
         }
-
-        return $subtotal;
     }
 
-    private function validateStock(Product $product, int $quantity): void
+    private function validateDetails(array $data): void
     {
-        if (!$product->hasEnoughStock($quantity)) {
-            throw new Halt("Stock insuficiente para {$product->name}. Disponible: {$product->stock}");
+        if (!isset($data['details']) || empty($data['details'])) {
+            throw new Halt('La venta debe tener al menos un producto');
+        }
+
+        foreach ($data['details'] as $detail) {
+            if (!isset($detail['quantity'], $detail['unit_price'], 
+                      $detail['product_name'], $detail['identifier'])) {
+                throw new Halt('Detalle de producto incompleto');
+            }
+            if ($detail['quantity'] < 1) {
+                throw new Halt('La cantidad debe ser mayor a 0');
+            }
+            if ($detail['unit_price'] <= 0) {
+                throw new Halt('El precio debe ser mayor a 0');
+            }
         }
     }
 
-    private function createSaleDetail(Sale $sale, Product $product, array $detail): float
+    private function calculateSubTotal(array $details): float
     {
-        $subtotal = $detail['quantity'] * $detail['unit_price'];
-
-        $sale->details()->create([
-            'product_id' => $product->id,
-            'quantity' => $detail['quantity'],
-            'unit_price' => $detail['unit_price'],
-            'subtotal' => $subtotal
-        ]);
-
-        $product->decrementStock($detail['quantity']);
-
-        return $subtotal;
+        return collect($details)->sum(function ($detail) {
+            return (float)$detail['quantity'] * (float)$detail['unit_price'];
+        });
     }
 
-    private function calculateTotal(float $subtotal, array $data): float
+    private function calculateFinalTotal(float $subTotal, array $data): float
     {
-        if ($this->isCreditSale($data) && isset($data['interest_rate']) && $data['interest_rate'] > 0) {
-            $interest = ($subtotal * $data['interest_rate']) / 100;
-            return $subtotal + $interest;
+        $total = $subTotal;
+        
+        // Restar cuota inicial
+        if (isset($data['initial_payment']) && $data['initial_payment'] > 0) {
+            $total = max(0, $total - (float)$data['initial_payment']);
         }
-        return $subtotal;
+        
+        // Aplicar interés si es crédito
+        if ($data['payment_type'] === 'credit' && isset($data['interest_rate']) && $data['interest_rate'] > 0) {
+            $interest = ($total * (float)$data['interest_rate']) / 100;
+            $total += $interest;
+        }
+        
+        return $total;
     }
 
-    private function isCreditSale(array $data): bool
+    private function createCreditInstallments(Sale $sale, float $finalTotal): void
     {
-        return ($data['payment_type'] ?? '') === 'credit' &&
-            isset($data['installments'], $data['first_payment_date']) &&
-            $data['installments'] > 0;
-    }
+        $installmentAmount = round($finalTotal / $sale->installments, 2);
+        $remainingAmount = $finalTotal;
+        $date = Carbon::parse($sale->first_payment_date);
 
-    private function createInstallments(Sale $sale, float $total, array $data): void
-    {
-        $installmentAmount = round($total / $data['installments'], 2);
-        $remainingAmount = $total;
-        $date = Carbon::parse($data['first_payment_date']);
+        for ($i = 1; $i <= $sale->installments; $i++) {
+            $amount = ($i == $sale->installments) 
+                ? $remainingAmount 
+                : $installmentAmount;
 
-        for ($i = 1; $i <= $data['installments']; $i++) {
-            $amount = ($i == $data['installments']) ? $remainingAmount : $installmentAmount;
-            $this->createInstallment($sale, $i, $amount, $date->copy());
+            $sale->installments()->create([
+                'installment_number' => $i,
+                'amount' => $amount,
+                'due_date' => $date->copy(),
+                'status' => 'pending'
+            ]);
+
             $remainingAmount -= $installmentAmount;
             $date->addMonth();
         }
-    }
-
-    private function createInstallment(Sale $sale, int $number, float $amount, Carbon $date): void
-    {
-        $sale->installments()->create([
-            'installment_number' => $number,
-            'amount' => $amount,
-            'due_date' => $date,
-            'status' => 'pending'
-        ]);
     }
 }

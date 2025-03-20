@@ -12,15 +12,19 @@ class SaleDetail extends Model
 
     protected $fillable = [
         'sale_id',
-        'product_id',
-        'quantity',
+        'provider_id',
+        'identifier_type',
+        'identifier',
+        'product_name',
+        'product_description',
         'unit_price',
+        'quantity',
         'subtotal'
     ];
 
     protected $casts = [
         'unit_price' => 'decimal:2',
-        'subtotal' => 'decimal:2',
+        'subtotal' => 'decimal:2'
     ];
 
     protected static function boot()
@@ -28,6 +32,15 @@ class SaleDetail extends Model
         parent::boot();
         
         static::creating(function ($detail) {
+            $detail->quantity = $detail->quantity ?? 1;
+            // Convertir el precio a formato decimal válido
+            $detail->unit_price = floatval(preg_replace('/[^0-9.]/', '', $detail->unit_price));
+            $detail->subtotal = $detail->quantity * $detail->unit_price;
+        });
+
+        static::updating(function ($detail) {
+            // Convertir el precio a formato decimal válido
+            $detail->unit_price = floatval(preg_replace('/[^0-9.]/', '', $detail->unit_price));
             $detail->subtotal = $detail->quantity * $detail->unit_price;
         });
     }
@@ -37,8 +50,10 @@ class SaleDetail extends Model
         return $this->belongsTo(Sale::class);
     }
 
-    public function product(): BelongsTo
+    public function provider(): BelongsTo
     {
-        return $this->belongsTo(Product::class);
+        return $this->belongsTo(Provider::class)->withDefault([
+            'name' => 'Sin proveedor'
+        ]);
     }
 }

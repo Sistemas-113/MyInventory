@@ -11,10 +11,14 @@ return new class extends Migration
         Schema::create('sale_details', function (Blueprint $table) {
             $table->id();
             $table->foreignId('sale_id')->constrained()->onDelete('cascade');
-            $table->foreignId('product_id')->constrained();
-            $table->integer('quantity');
-            $table->decimal('unit_price', 10, 2);
-            $table->decimal('subtotal', 10, 2);
+            $table->foreignId('provider_id')->nullable()->constrained();
+            $table->string('identifier_type')->nullable();
+            $table->string('identifier')->nullable();
+            $table->string('product_name');
+            $table->text('product_description')->nullable();
+            $table->decimal('unit_price', 20, 2); // Aumentado a 20 dígitos
+            $table->integer('quantity')->default(1);
+            $table->decimal('subtotal', 20, 2); // Aumentado a 20 dígitos
             $table->timestamps();
         });
     }

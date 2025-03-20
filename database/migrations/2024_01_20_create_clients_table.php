@@ -10,10 +10,12 @@ return new class extends Migration
     {
         Schema::create('clients', function (Blueprint $table) {
             $table->id();
+            $table->string('identification')->unique();
             $table->string('name');
-            $table->string('email')->unique();
-            $table->date('birth_date');
-            $table->decimal('credit_limit', 10, 2);
+            $table->string('phone');
+            $table->string('email')->nullable();
+            $table->text('address')->nullable();
+            $table->text('references')->nullable();
             $table->decimal('current_balance', 10, 2)->default(0);
             $table->timestamps();
         });

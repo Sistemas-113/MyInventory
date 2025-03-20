@@ -15,18 +15,33 @@ class Installment extends Model
         'installment_number',
         'amount',
         'due_date',
-        'paid_date',
-        'status'
+        'status',
+        'paid_date'
     ];
 
     protected $casts = [
+        'amount' => 'decimal:2',
         'due_date' => 'date',
-        'paid_date' => 'date',
-        'amount' => 'decimal:2'
+        'paid_date' => 'date'
     ];
 
     public function sale(): BelongsTo
     {
         return $this->belongsTo(Sale::class);
+    }
+
+    public function markAsPaid(): void
+    {
+        $this->update([
+            'status' => 'paid',
+            'paid_date' => now()
+        ]);
+    }
+
+    public function markAsOverdue(): void
+    {
+        if ($this->status === 'pending' && $this->due_date->isPast()) {
+            $this->update(['status' => 'overdue']);
+        }
     }
 }

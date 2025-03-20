@@ -11,16 +11,16 @@ class Client extends Model
     use HasFactory;
 
     protected $fillable = [
+        'identification',
         'name',
+        'phone',
         'email',
-        'birth_date',
-        'credit_limit',
+        'address',
+        'references',
         'current_balance'
     ];
 
     protected $casts = [
-        'birth_date' => 'date',
-        'credit_limit' => 'decimal:2',
         'current_balance' => 'decimal:2'
     ];
 

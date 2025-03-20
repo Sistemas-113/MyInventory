@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Filament\Facades\Filament; // Importar correctamente la clase Filament
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -13,6 +14,8 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        //
+        Filament::registerResources([
+            \App\Filament\Resources\PlatformResource::class,
+        ]);
     }
 }

@@ -3,235 +3,258 @@
 namespace App\Filament\Resources\CreditResource\Pages;
 
 use App\Filament\Resources\CreditResource;
-use App\Filament\Resources\CreditResource\Widgets\CreditStats;
-use Filament\Actions;
+use App\Filament\Resources\CreditResource\Widgets\CreditStatsOverview;
 use Filament\Resources\Pages\ViewRecord;
-use Filament\Forms;
-use Filament\Tables\Table;
-use Filament\Tables;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
-use Filament\Notifications\Notification;
-use Filament\Support\Exceptions\Halt;
-use Filament\Infolists;
+use Filament\Actions;
 use Filament\Infolists\Infolist;
+use Filament\Infolists\Components\Section;
+use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\Grid;
+use Filament\Infolists\Components\Split;
+use Filament\Infolists\Components\Tabs;
+use Filament\Forms;
+use App\Models\Payment;
+use Filament\Notifications\Notification;
 
 class ViewCredit extends ViewRecord
 {
     protected static string $resource = CreditResource::class;
+
+    protected function getHeaderWidgets(): array
+    {
+        return [
+            CreditStatsOverview::make([
+                'record' => $this->record
+            ]),
+        ];
+    }
 
     protected function getHeaderActions(): array
     {
         return [
             Actions\Action::make('registerPayment')
                 ->label('Registrar Pago')
-                ->icon('heroicon-o-currency-dollar')
                 ->color('success')
+                ->icon('heroicon-m-banknotes')
                 ->form([
-                    Forms\Components\Section::make()
-                        ->schema([
-                            Forms\Components\Select::make('installment_id')
-                                ->label('Cuota a Pagar')
-                                ->required()
-                                ->options(fn () => $this->record->installments()
-                                    ->where('status', 'pending')
-                                    ->orderBy('installment_number')
-                                    ->get()
-                                    ->mapWithKeys(fn ($installment) => [
-                                        $installment->id => "Cuota {$installment->installment_number} - \${$installment->amount}"
-                                    ]))
-                                ->live()
-                                ->afterStateUpdated(fn ($state, Forms\Set $set) => 
-                                    $set('amount', $this->record->installments()->find($state)?->amount ?? 0)),
-
-                            Forms\Components\TextInput::make('amount')
-                                ->label('Monto')
-                                ->required()
-                                ->numeric()
-                                ->disabled()
-                                ->prefix('$'),
-
-                            Forms\Components\DatePicker::make('paid_date')
-                                ->label('Fecha de Pago')
-                                ->required()
-                                ->default(now())
-                                ->maxDate(now()),
+                    Forms\Components\Select::make('installment_id')
+                        ->label('Cuota')
+                        ->options(fn ($record) => $record->installments()
+                            ->where('status', 'pending')
+                            ->get()
+                            ->mapWithKeys(fn ($installment) => [
+                                $installment->id => "Cuota {$installment->installment_number} - $ " . 
+                                number_format($installment->amount, 0, ',', '.')
+                            ]))
+                        ->required(),
+                    Forms\Components\TextInput::make('amount')
+                        ->label('Monto')
+                        ->numeric()
+                        ->required()
+                        ->prefix('$'),
+                    Forms\Components\Select::make('payment_method')
+                        ->label('Método de Pago')
+                        ->options([
+                            'cash' => 'Efectivo',
+                            'transfer' => 'Transferencia',
+                            'card' => 'Tarjeta',
                         ])
-                        ->columns(1),
+                        ->required(),
+                    Forms\Components\Textarea::make('notes')
+                        ->label('Notas')
+                        ->rows(2),
                 ])
-                ->action(function (array $data): void {
-                    try {
-                        DB::beginTransaction();
+                ->action(function (array $data, $record): void {
+                    $installment = $record->installments()->find($data['installment_id']);
+                    
+                    // Redondear el monto pagado y el monto de la cuota
+                    $amountPaid = round(floatval(preg_replace('/[^0-9.]/', '', $data['amount'])));
+                    $installmentAmount = round(floatval($installment->amount));
 
-                        $installment = $this->record->installments()->find($data['installment_id']);
-                        
-                        if (!$installment || $installment->status === 'paid') {
-                            throw new Halt('Esta cuota ya ha sido pagada.');
-                        }
+                    // Crear el registro de pago con monto redondeado
+                    $payment = Payment::create([
+                        'sale_id' => $record->id,
+                        'installment_id' => $installment->id,
+                        'amount' => $amountPaid,
+                        'payment_method' => $data['payment_method'],
+                        'reference_number' => $data['reference_number'] ?? null,
+                        'notes' => $data['notes']
+                    ]);
 
-                        // Actualizar la cuota
+                    // Si el pago es igual o mayor al monto de la cuota, marcarla como pagada
+                    if ($amountPaid >= $installmentAmount) {
                         $installment->update([
                             'status' => 'paid',
-                            'paid_date' => $data['paid_date'],
+                            'paid_date' => now()
                         ]);
 
-                        // Actualizar el estado de la venta si todas las cuotas están pagadas
-                        if (!$this->record->installments()->where('status', 'pending')->exists()) {
-                            $this->record->update(['status' => 'completed']);
-                        }
-
-                        DB::commit();
-
-                        Notification::make()
-                            ->title('Pago registrado exitosamente')
-                            ->success()
-                            ->send();
-
-                        $this->dispatch('creditUpdated');
-                        $this->redirect($this->getResource()::getUrl('view', ['record' => $this->record]));
-
-                    } catch (\Exception $e) {
-                        DB::rollBack();
-                        Notification::make()
-                            ->title('Error al registrar el pago')
-                            ->body($e->getMessage())
-                            ->danger()
-                            ->send();
+                        $message = sprintf(
+                            'Pago de $ %s registrado. Cuota marcada como pagada.',
+                            number_format($amountPaid, 0, ',', '.')
+                        );
+                    } else {
+                        $message = sprintf(
+                            'Pago parcial de $ %s registrado.',
+                            number_format($amountPaid, 0, ',', '.')
+                        );
                     }
-                })
-                ->visible(fn() => $this->record->installments()->where('status', 'pending')->exists()),
 
-            Actions\Action::make('viewPayments')
-                ->label('Ver Historial')
-                ->icon('heroicon-o-clock')
-                ->modalHeading('Historial de Pagos')
-                ->modalContent(fn () => view('filament.resources.credit-resource.pages.payments-modal', [
-                    'payments' => $this->record->installments()
-                        ->orderBy('installment_number', 'desc')
-                        ->get()
-                ]))
-                ->modalWidth('5xl')
-                ->color('info'),
+                    Notification::make()
+                        ->title($message)
+                        ->success()
+                        ->send();
+
+                    $this->redirect($this->getResource()::getUrl('view', ['record' => $record]));
+                }),
+
+            Actions\Action::make('printReceipt')
+                ->label('Imprimir Recibo')
+                ->icon('heroicon-m-printer')
+                ->color('info')
+                ->requiresConfirmation()
+                ->modalHeading('¿Desea imprimir el recibo?')
+                ->modalDescription('Se generará un PDF con el recibo del crédito.')
+                ->modalSubmitActionLabel('Imprimir')
+                ->url(fn ($record) => route('credits.print-receipt', $record))
+                ->openUrlInNewTab(),
+                
+            Actions\EditAction::make()
+                ->label('Editar Crédito')
+                ->icon('heroicon-m-pencil-square'),
+                
+            Actions\DeleteAction::make()
+                ->label('Eliminar Crédito')
+                ->icon('heroicon-m-trash')
+                ->requiresConfirmation(),
         ];
     }
 
-    public function table(Table $table): Table
+    public function infolist(Infolist $infolist): Infolist
     {
-        return $table
-            ->query($this->record->installments()->orderBy('installment_number'))
-            ->heading('Historial de Pagos')
-            ->description('Registro de todos los pagos realizados')
-            ->columns([
-                Tables\Columns\TextColumn::make('installment_number')
-                    ->label('N° Cuota')
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('amount')
-                    ->money('usd')
-                    ->label('Monto')
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('due_date')
-                    ->date()
-                    ->label('Fecha Vencimiento')
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('paid_date')
-                    ->date()
-                    ->label('Fecha Pago'),
-                Tables\Columns\TextColumn::make('status')
-                    ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'paid' => 'success',
-                        'pending' => 'warning',
-                    })
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'paid' => 'Pagado',
-                        'pending' => 'Pendiente',
-                    }),
-            ])
-            ->defaultSort('installment_number', 'asc')
-            ->striped();
-    }
+        return $infolist
+            ->schema([
+                Split::make([
+                    Section::make()
+                        ->schema([
+                            TextEntry::make('client.name')
+                                ->label('Cliente')
+                                ->weight('bold')
+                                ->size(TextEntry\TextEntrySize::Large),
+                            Grid::make(3)
+                                ->schema([
+                                    TextEntry::make('total_amount')
+                                        ->label('Monto Total')
+                                        ->color('danger')
+                                        ->formatStateUsing(fn ($state) => '$ ' . number_format($state, 0, ',', '.')),
+                                    TextEntry::make('interest_rate')
+                                        ->label('Tasa de Interés')
+                                        ->color('warning')
+                                        ->formatStateUsing(fn ($state) => "{$state}%"),
+                                    TextEntry::make('initial_payment')
+                                        ->label('Cuota Inicial')
+                                        ->color('success')
+                                        ->formatStateUsing(fn ($state) => '$ ' . number_format($state, 0, ',', '.')),
+                                ]),
+                        ])
+                        ->grow(),
+                ])->from('md'),
 
-    public function contentTable(Table $table): Table
-    {
-        return $table
-            ->query($this->record->installments()->orderBy('installment_number'))
-            ->heading('Historial de Pagos')
-            ->description('Registro detallado de todos los pagos')
-            ->columns([
-                Tables\Columns\TextColumn::make('installment_number')
-                    ->label('N° Cuota')
-                    ->sortable()
-                    ->searchable(),
-                Tables\Columns\TextColumn::make('amount')
-                    ->money('usd')
-                    ->label('Monto')
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('due_date')
-                    ->date()
-                    ->label('Fecha Vencimiento')
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('paid_date')
-                    ->date()
-                    ->label('Fecha Pago'),
-                Tables\Columns\BadgeColumn::make('status')
-                    ->colors([
-                        'success' => 'paid',
-                        'warning' => 'pending',
+                Tabs::make('Detalles del Crédito')
+                    ->tabs([
+                        Tabs\Tab::make('Cuotas')
+                            ->icon('heroicon-m-currency-dollar')
+                            ->badge($this->record->remaining_installments)
+                            ->schema([
+                                TextEntry::make('installments')
+                                    ->label(false)
+                                    ->state(function ($record) {
+                                        $installments = $record->installments()->get();
+                                        
+                                        return view('livewire.tables.installments-table', [
+                                            'installments' => $installments
+                                        ]);
+                                    })
+                                    ->columnSpanFull(),
+
+                            ]),
+                            
+                        Tabs\Tab::make('Productos')
+                            ->icon('heroicon-m-shopping-cart')
+                            ->badge(fn ($record) => $record->details->count())
+                            ->schema([
+                                TextEntry::make('details')
+                                    ->label(false)
+                                    ->state(function ($record) {
+                                        $html = '<div class="px-4 py-2">
+                                                    <div class="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-6">';
+                                        
+                                        foreach ($record->details as $detail) {
+                                            $html .= "
+                                                <div class='bg-white dark:bg-gray-800 overflow-hidden shadow-lg rounded-lg border border-gray-200 dark:border-gray-700'>
+                                                    <div class='p-6'>
+                                                        <div class='flex justify-between items-start'>
+                                                            <div class='space-y-1'>
+                                                                <h3 class='text-lg font-semibold text-gray-900 dark:text-white'>{$detail->product_name}</h3>
+                                                                <p class='text-sm text-gray-500 dark:text-gray-400'>{$detail->identifier_type}: {$detail->identifier}</p>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <div class='mt-4 space-y-3'>
+                                                            <div class='grid grid-cols-2 gap-4'>
+                                                                <div class='flex flex-col'>
+                                                                    <span class='text-sm text-gray-500 dark:text-gray-400'>Cantidad</span>
+                                                                    <span class='font-medium text-gray-900 dark:text-white'>{$detail->quantity} unidades</span>
+                                                                </div>
+                                                                <div class='flex flex-col'>
+                                                                    <span class='text-sm text-gray-500 dark:text-gray-400'>Precio Unitario</span>
+                                                                    <span class='font-medium text-gray-900 dark:text-white'>$ " . number_format($detail->unit_price, 0, ',', '.') . "</span>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            <div class='pt-3 border-t border-gray-200 dark:border-gray-700'>
+                                                                <div class='flex justify-between items-center'>
+                                                                    <span class='text-sm font-medium text-gray-500 dark:text-gray-400'>Subtotal</span>
+                                                                    <span class='text-lg font-bold text-primary-600 dark:text-primary-400'>
+                                                                        $ " . number_format($detail->subtotal, 0, ',', '.') . "
+                                                                    </span>
+                                                                </div>
+                                                            </div>";
+                                            
+                                            if ($detail->product_description) {
+                                                $html .= "
+                                                    <div class='mt-3 pt-3 border-t border-gray-200 dark:border-gray-700'>
+                                                        <p class='text-sm text-gray-600 dark:text-gray-300'>{$detail->product_description}</p>
+                                                    </div>";
+                                            }
+                                            
+                                            $html .= "
+                                                    </div>
+                                                </div>
+                                            </div>";
+                                        }
+                                        
+                                        $html .= '</div></div>';
+                                        return new \Illuminate\Support\HtmlString($html);
+                                    })
+                                    ->columnSpanFull()
+                                    ->html(),
+                            ]),
+
+                        Tabs\Tab::make('Historial de Pagos')
+                            ->icon('heroicon-m-clock')
+                            ->badge(fn ($record) => $record->payments()->count())
+                            ->schema([
+                                TextEntry::make('payments')
+                                    ->label(false)
+                                    ->state(function ($record) {
+                                        return view('livewire.tables.payments-table', [
+                                            'payments' => $record->payments()->latest()->get()
+                                        ]);
+                                    })
+                                    ->columnSpanFull(),
+                            ]),
                     ])
-                    ->formatStateUsing(fn (string $state) => match ($state) {
-                        'paid' => 'Pagado',
-                        'pending' => 'Pendiente',
-                    }),
-            ])
-            ->defaultSort('installment_number', 'asc')
-            ->striped()
-            ->filters([
-                Tables\Filters\SelectFilter::make('status')
-                    ->options([
-                        'paid' => 'Pagado',
-                        'pending' => 'Pendiente',
-                    ])
-                    ->label('Estado'),
-            ])
-            ->filtersFormColumns(2);
-    }
-
-    protected function getHeaderWidgets(): array
-    {
-        return [
-            CreditStats::class => CreditStats::make([
-                'record' => $this->getRecord(),
-            ]),
-        ];
-    }
-
-    protected function getFooterWidgets(): array
-    {
-        return [];
-    }
-
-    public function getViewData(): array
-    {
-        return [
-            'payments' => $this->record->installments()
-                ->orderBy('installment_number')
-                ->get(),
-        ];
-    }
-
-    protected function getViewContentFooter(): ?View
-    {
-        return view('filament.resources.credit-resource.pages.payments-table', [
-            'payments' => $this->record->installments()
-                ->orderBy('installment_number')
-                ->get()
-        ]);
-    }
-
-    protected function getViewContent(): ?View
-    {
-        return view('filament.resources.credit-resource.pages.view-credit', [
-            'record' => $this->record,
-        ]);
+                    ->activeTab(fn () => 0),
+            ]);
     }
 }

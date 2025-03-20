@@ -11,12 +11,13 @@ return new class extends Migration
         Schema::create('sales', function (Blueprint $table) {
             $table->id();
             $table->foreignId('client_id')->constrained();
-            $table->decimal('total_amount', 10, 2);
+            $table->decimal('total_amount', 20, 2); // Aumentar la precisión
+            $table->decimal('initial_payment', 20, 2)->default(0);
             $table->enum('payment_type', ['cash', 'credit', 'card']);
             $table->enum('status', ['pending', 'completed', 'cancelled']);
-            $table->decimal('interest_rate', 5, 2)->nullable(); // Tasa de interés
-            $table->integer('installments')->nullable(); // Número de cuotas
-            $table->date('first_payment_date')->nullable(); // Fecha primer pago
+            $table->decimal('interest_rate', 5, 2)->nullable();
+            $table->integer('installments')->nullable();
+            $table->date('first_payment_date')->nullable();
             $table->timestamps();
         });
     }
