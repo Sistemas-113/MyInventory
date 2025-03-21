@@ -136,6 +136,14 @@ class SaleResource extends Resource
                                         $set('../../subtotal', $total);
                                     }
                                 }),
+                            Forms\Components\TextInput::make('purchase_price')
+                                ->label('Precio de Compra')
+                                ->required()
+                                ->numeric()
+                                ->minValue(0)
+                                ->prefix('$')
+                                ->live(onBlur: true)
+                                ->dehydrateStateUsing(fn ($state) => floatval(preg_replace('/[^0-9.]/', '', $state ?? '0'))),
                             Forms\Components\TextInput::make('unit_price')
                                 ->label('Precio Unitario')
                                 ->required()

@@ -26,6 +26,13 @@ class FilamentServiceProvider extends ServiceProvider
                         ->group('Configuración'),
                 ]);
             }
+
+            Filament::registerResources([
+                \App\Filament\Resources\DashboardResource::class,
+                \App\Filament\Resources\SaleResource::class,
+                \App\Filament\Resources\ClientResource::class,
+                \App\Filament\Resources\PlatformResource::class,
+            ]);
         });
     }
 }

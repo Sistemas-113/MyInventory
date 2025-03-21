@@ -34,6 +34,7 @@ class SalesExport implements FromCollection, WithHeadings, WithMapping, ShouldAu
             'Tasa Interés',
             'Cuotas',
             'Fecha',
+            'Ganancia' // Nuevo encabezado
         ];
     }
 
@@ -49,7 +50,17 @@ class SalesExport implements FromCollection, WithHeadings, WithMapping, ShouldAu
             $sale->interest_rate ? "{$sale->interest_rate}%" : 'N/A',
             $sale->installments ?? 'N/A',
             $sale->created_at->format('d/m/Y'),
+            number_format($this->calculateProfit($sale), 0, ',', '.') // Nueva columna
         ];
+    }
+
+    private function calculateProfit($sale): float
+    {
+        $totalPurchasePrice = $sale->details->sum(function ($detail) {
+            return $detail->purchase_price * $detail->quantity;
+        });
+
+        return $sale->total_amount - $totalPurchasePrice;
     }
 
     private function getPaymentType($type): string

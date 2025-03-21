@@ -96,6 +96,7 @@ class CreateSale extends CreateRecord
             // Crear los detalles con valores numéricos validados
             foreach ($data['details'] as $detail) {
                 $price = floatval(preg_replace('/[^0-9.]/', '', $detail['unit_price']));
+                $purchasePrice = floatval(preg_replace('/[^0-9.]/', '', $detail['purchase_price'] ?? '0'));
                 $quantity = intval($detail['quantity']);
                 
                 $sale->details()->create([
@@ -106,6 +107,7 @@ class CreateSale extends CreateRecord
                     'identifier' => $detail['identifier'],
                     'quantity' => $quantity,
                     'unit_price' => $price,
+                    'purchase_price' => $purchasePrice,
                     'subtotal' => $quantity * $price,
                 ]);
             }

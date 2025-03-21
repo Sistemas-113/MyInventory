@@ -17,12 +17,14 @@ class SaleDetail extends Model
         'identifier',
         'product_name',
         'product_description',
+        'purchase_price',
         'unit_price',
         'quantity',
         'subtotal'
     ];
 
     protected $casts = [
+        'purchase_price' => 'decimal:2',
         'unit_price' => 'decimal:2',
         'subtotal' => 'decimal:2'
     ];
@@ -33,13 +35,13 @@ class SaleDetail extends Model
         
         static::creating(function ($detail) {
             $detail->quantity = $detail->quantity ?? 1;
-            // Convertir el precio a formato decimal válido
+            $detail->purchase_price = floatval(preg_replace('/[^0-9.]/', '', $detail->purchase_price));
             $detail->unit_price = floatval(preg_replace('/[^0-9.]/', '', $detail->unit_price));
             $detail->subtotal = $detail->quantity * $detail->unit_price;
         });
 
         static::updating(function ($detail) {
-            // Convertir el precio a formato decimal válido
+            $detail->purchase_price = floatval(preg_replace('/[^0-9.]/', '', $detail->purchase_price));
             $detail->unit_price = floatval(preg_replace('/[^0-9.]/', '', $detail->unit_price));
             $detail->subtotal = $detail->quantity * $detail->unit_price;
         });

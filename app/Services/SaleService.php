@@ -78,7 +78,7 @@ class SaleService
         try {
             foreach ($details as $detail) {
                 // Validar datos mínimos requeridos
-                if (!isset($detail['product_name'], $detail['quantity'], $detail['unit_price'])) {
+                if (!isset($detail['product_name'], $detail['quantity'], $detail['unit_price'], $detail['purchase_price'])) {
                     throw new Halt('Datos de producto incompletos');
                 }
 
@@ -91,6 +91,7 @@ class SaleService
                     'identifier' => $detail['identifier'] ?? null,
                     'quantity' => intval($detail['quantity']),
                     'unit_price' => floatval($detail['unit_price']),
+                    'purchase_price' => floatval($detail['purchase_price']),
                     'subtotal' => floatval($detail['quantity']) * floatval($detail['unit_price']),
                 ]);
             }
