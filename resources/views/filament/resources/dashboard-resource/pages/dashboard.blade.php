@@ -1,9 +1,15 @@
-@extends('filament::page')
-
-@section('content')
-    <div class="space-y-6">
-        @foreach (\Filament\Facades\Filament::getWidgets() as $widget)
+<x-filament-panels::page>
+    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-8">
+        @foreach ($this->getHeaderWidgets() as $widget)
             @livewire($widget)
         @endforeach
     </div>
-@endsection
+
+    <x-filament::section class="mt-8">
+        <div class="grid grid-cols-1 gap-4 lg:gap-8">
+            @foreach ($this->getFooterWidgets() as $widget)
+                @livewire($widget)
+            @endforeach
+        </div>
+    </x-filament::section>
+</x-filament-panels::page>

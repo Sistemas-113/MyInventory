@@ -2,34 +2,25 @@
 
 namespace App\Filament\Pages;
 
-use App\Filament\Widgets\{
-    StatsOverview,
-    TopProducts,
-    LowStockProducts,
-    LatestSales
-};
 use Filament\Pages\Dashboard as BaseDashboard;
 
 class Dashboard extends BaseDashboard
 {
-    public function getColumns(): int | array
+
+
+    protected function getHeaderWidgets(): array
     {
         return [
-            'md' => 2,
-            'xl' => 3,
+            \App\Filament\Widgets\DashboardStats::class,
+            \App\Filament\Widgets\SalesAnalytics::class,
+            \App\Filament\Widgets\SalesChart::class,
         ];
     }
 
-    public function getWidgets(): array  // Cambiado a public
+    protected function getFooterWidgets(): array
     {
         return [
-            // Estadísticas generales
-            StatsOverview::class,
-            
-            // Widgets de datos
-            TopProducts::class,
-            LatestSales::class,
-            LowStockProducts::class,
+            \App\Filament\Widgets\LatestSales::class,
         ];
     }
 }

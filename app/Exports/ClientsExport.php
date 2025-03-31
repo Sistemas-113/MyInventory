@@ -7,8 +7,10 @@ use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithStyles;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class ClientsExport implements FromCollection, WithHeadings, WithMapping, ShouldAutoSize
+class ClientsExport implements FromCollection, WithHeadings, WithMapping, ShouldAutoSize, WithStyles
 {
     protected $clients;
 
@@ -47,6 +49,20 @@ class ClientsExport implements FromCollection, WithHeadings, WithMapping, Should
             $client->address,
             $client->references,
             $client->created_at->format('d/m/Y'),
+        ];
+    }
+
+    public function styles(Worksheet $sheet)
+    {
+        return [
+            // Estilo para los encabezados
+            1 => [
+                'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+                'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => '004d99']],
+                'alignment' => ['horizontal' => 'center', 'vertical' => 'center'],
+            ],
+            // Ajustar ancho automático para todas las columnas
+            'A:Z' => ['alignment' => ['wrapText' => true]],
         ];
     }
 }

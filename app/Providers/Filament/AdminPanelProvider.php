@@ -8,6 +8,8 @@ use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Pages;
 use Filament\Panel;
 use Filament\PanelProvider;
+use Filament\Support\Colors\Color;
+use Filament\Widgets;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -15,11 +17,6 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
-use App\Filament\Resources\SaleResource;
-use App\Filament\Resources\ClientResource;
-use App\Filament\Resources\ProductResource;
-use App\Filament\Resources\CreditResource;
-use App\Filament\Resources\ProviderResource;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -30,40 +27,19 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
-            ->brandName('Sistema de Ventas')
-            ->colors([
-                'primary' => [
-                    50 => '#eef2ff',
-                    100 => '#e0e7ff',
-                    200 => '#c7d2fe',
-                    300 => '#a5b4fc',
-                    400 => '#818cf8',
-                    500 => '#6366f1',
-                    600 => '#4f46e5',
-                    700 => '#4338ca',
-                    800 => '#3730a3',
-                    900 => '#312e81',
-                    950 => '#1e1b4b',
-                ],
-            ])
-            ->sidebarCollapsibleOnDesktop(false)
-            ->sidebarWidth('17rem')
+            ->brandName('Mi Sistema')
+            ->favicon(asset('images/favicon.ico'))
+            ->colors(['primary' => '#0ea5e9'])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([
                 Pages\Dashboard::class,
             ])
-            ->resources([
-                ProviderResource::class,
-                ClientResource::class,
-                SaleResource::class,
-                CreditResource::class,
+            ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
+            ->widgets([
+                
+                
             ])
-            ->navigationGroups([
-                'Inventario',
-                'Ventas',
-            ])
-            ->maxContentWidth('full')
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

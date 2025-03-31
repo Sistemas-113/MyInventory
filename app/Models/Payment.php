@@ -16,11 +16,13 @@ class Payment extends Model
         'amount',
         'payment_method',
         'reference_number',
-        'notes'
+        'notes',
+        'payment_date'  // Agregar a fillable
     ];
 
     protected $casts = [
         'amount' => 'decimal:2',
+        'payment_date' => 'datetime'  // Agregar cast
     ];
 
     public function sale(): BelongsTo

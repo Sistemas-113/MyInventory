@@ -77,22 +77,27 @@ class SaleService
     {
         try {
             foreach ($details as $detail) {
-                // Validar datos mínimos requeridos
-                if (!isset($detail['product_name'], $detail['quantity'], $detail['unit_price'], $detail['purchase_price'])) {
+                // Validar datos mínimos requeridos incluyendo purchase_price
+                if (!isset($detail['product_name'], $detail['quantity'], 
+                    $detail['unit_price'], $detail['purchase_price'])) {
                     throw new Halt('Datos de producto incompletos');
                 }
 
-                // Crear el detalle de venta
+                // Limpiar y convertir valores numéricos
+                $quantity = intval($detail['quantity']);
+                $unitPrice = floatval(preg_replace('/[^0-9.]/', '', $detail['unit_price']));
+                $purchasePrice = floatval(preg_replace('/[^0-9.]/', '', $detail['purchase_price']));
+                
                 $sale->details()->create([
                     'provider_id' => $detail['provider_id'] ?? null,
                     'product_name' => $detail['product_name'],
                     'product_description' => $detail['product_description'] ?? null,
                     'identifier_type' => $detail['identifier_type'] ?? null,
                     'identifier' => $detail['identifier'] ?? null,
-                    'quantity' => intval($detail['quantity']),
-                    'unit_price' => floatval($detail['unit_price']),
-                    'purchase_price' => floatval($detail['purchase_price']),
-                    'subtotal' => floatval($detail['quantity']) * floatval($detail['unit_price']),
+                    'quantity' => $quantity,
+                    'unit_price' => $unitPrice,
+                    'purchase_price' => $purchasePrice,
+                    'subtotal' => $quantity * $unitPrice,
                 ]);
             }
         } catch (\Exception $e) {

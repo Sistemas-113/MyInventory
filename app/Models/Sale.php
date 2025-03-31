@@ -48,14 +48,13 @@ class Sale extends Model
 
     public function installments(): HasMany
     {
-        return $this->hasMany(Installment::class);
+        return $this->hasMany(Installment::class)->orderBy('installment_number');
     }
 
     public function pendingInstallments(): HasMany
     {
         return $this->hasMany(Installment::class)
-            ->where('status', 'pending')
-            ->orderBy('due_date');
+            ->where('status', 'pending');
     }
 
     public function nextInstallment()
@@ -95,6 +94,29 @@ class Sale extends Model
         return $this->hasMany(Payment::class);
     }
 
+    public function getTotalProfitAttribute(): float
+    {
+        return $this->details->sum(function ($detail) {
+            return ($detail->unit_price - $detail->purchase_price) * $detail->quantity;
+        });
+    }
+
+    public function getProfitMarginAttribute(): float
+    {
+        $totalSales = $this->details->sum(function ($detail) {
+            return $detail->unit_price * $detail->quantity;
+        });
+
+        return $totalSales > 0 ? ($this->total_profit / $totalSales) * 100 : 0;
+    }
+
+    public function getTotalCostAttribute(): float
+    {
+        return $this->details->sum(function ($detail) {
+            return $detail->purchase_price * $detail->quantity;
+        });
+    }
+
     protected function calculateTotal(): float
     {
         try {
@@ -116,6 +138,83 @@ class Sale extends Model
             ]);
             return 0;
         }
+    }
+
+    public function recalculateInstallments(): void
+    {
+        DB::transaction(function () {
+            $installments = $this->installments()
+                ->orderBy('installment_number')
+                ->get();
+
+            foreach ($installments as $installment) {
+                $totalPaid = $installment->payments()->sum('amount');
+                
+                // Actualizar monto pagado y estado
+                $installment->total_paid = $totalPaid;
+                
+                if ($totalPaid >= $installment->amount) {
+                    $installment->status = 'paid';
+                    $installment->paid_date = $installment->payments()->latest()->first()->payment_date;
+                } else {
+                    $installment->status = $installment->due_date < now() ? 'overdue' : 'pending';
+                }
+                
+                $installment->save();
+            }
+
+            // Actualizar estado general del crédito
+            $this->status = $installments->every(fn($i) => $i->status === 'paid') ? 'completed' : 'pending';
+            $this->save();
+        });
+    }
+
+    public function distributePayment($amount, $currentInstallmentId = null, $paymentMethod = 'payment', $paymentDate = null): void
+    {
+        $paymentDate = $paymentDate ?? now()->startOfDay();
+
+        DB::transaction(function () use ($amount, $currentInstallmentId, $paymentMethod, $paymentDate) {
+            $remainingAmount = $amount;
+            $installments = $this->installments()
+                ->when($currentInstallmentId, function ($query) use ($currentInstallmentId) {
+                    // Si hay una cuota específica, empezamos por ella
+                    return $query->where('id', $currentInstallmentId)
+                        ->union(
+                            $this->installments()
+                                ->where('id', '!=', $currentInstallmentId)
+                                ->where('status', '!=', 'paid')
+                                ->orderBy('installment_number')
+                        );
+                }, function ($query) {
+                    // Si no hay cuota específica, tomamos todas las pendientes
+                    return $query->where('status', '!=', 'paid')
+                        ->orderBy('installment_number');
+                })
+                ->get();
+
+            foreach ($installments as $installment) {
+                if ($remainingAmount <= 0) break;
+
+                $pending = $installment->amount - $installment->total_paid;
+                $paymentAmount = min($remainingAmount, $pending);
+
+                if ($paymentAmount > 0) {
+                    $payment = $installment->payments()->create([
+                        'sale_id' => $this->id,
+                        'amount' => $paymentAmount,
+                        'payment_method' => $paymentMethod,
+                        'payment_date' => $paymentDate,
+                        'notes' => $currentInstallmentId == $installment->id 
+                            ? "Pago principal a cuota {$installment->installment_number}"
+                            : "Excedente aplicado a cuota {$installment->installment_number}"
+                    ]);
+
+                    $remainingAmount -= $paymentAmount;
+                }
+            }
+        });
+
+        $this->recalculateInstallments();
     }
 
     protected static function boot()

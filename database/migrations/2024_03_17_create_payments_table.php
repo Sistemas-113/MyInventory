@@ -16,6 +16,7 @@ return new class extends Migration
             $table->string('payment_method');
             $table->string('reference_number')->nullable();
             $table->text('notes')->nullable();
+            $table->datetime('payment_date');  // Agregar campo para fecha de pago
             $table->timestamps();
         });
     }

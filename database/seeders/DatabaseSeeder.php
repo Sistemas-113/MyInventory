@@ -14,13 +14,9 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        // Admin user
-        DB::table('users')->insert([
-            'name' => 'Admin',
-            'email' => 'danilo.doria@sanagustin.edu.co',
-            'password' => Hash::make('Sistemas113'),
+        $this->call([
+            UserSeeder::class,
+            // ...otros seeders...
         ]);
-
-        
     }
 }

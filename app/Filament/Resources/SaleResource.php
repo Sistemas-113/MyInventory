@@ -17,6 +17,7 @@ use Illuminate\Support\Collection;
 use App\Exports\SalesExport;
 use Filament\Actions;
 use Maatwebsite\Excel\Facades\Excel;
+use Illuminate\Support\Carbon;
 
 class SaleResource extends Resource
 {
@@ -33,7 +34,7 @@ class SaleResource extends Resource
 
     public static function getModelLabel(): string
     {
-        return __('Venta');
+        return __('Ventas');
     }
 
     public static function getPluralModelLabel(): string
@@ -143,7 +144,13 @@ class SaleResource extends Resource
                                 ->minValue(0)
                                 ->prefix('$')
                                 ->live(onBlur: true)
-                                ->dehydrateStateUsing(fn ($state) => floatval(preg_replace('/[^0-9.]/', '', $state ?? '0'))),
+                                ->dehydrateStateUsing(fn ($state) => round(floatval(preg_replace('/[^0-9.]/', '', $state ?? '0')), 2))
+                                ->formatStateUsing(fn ($state) => number_format($state, 0, ',', '.'))
+                                ->afterStateUpdated(function ($state, Forms\Get $get, Forms\Set $set) {
+                                    if ($state) {
+                                        $set('purchase_price', round(floatval(preg_replace('/[^0-9.]/', '', $state)), 2));
+                                    }
+                                }),
                             Forms\Components\TextInput::make('unit_price')
                                 ->label('Precio Unitario')
                                 ->required()
@@ -178,16 +185,12 @@ class SaleResource extends Resource
 
             Section::make('Resumen')
                 ->schema([
-                    Forms\Components\TextInput::make('subtotal')
-                        ->label('Subtotal')
-                        ->disabled()
-                        ->prefix('$'),
                     Forms\Components\TextInput::make('total_amount')
                         ->label('Total Final')
                         ->disabled()
                         ->prefix('$'),
                 ])
-                ->columns(2),
+                ->columns(1),
 
             Section::make('Información de Crédito')
                 ->schema([
@@ -365,10 +368,10 @@ class SaleResource extends Resource
                     ->indicateUsing(function (array $data): array {
                         $indicators = [];
                         if ($data['created_from'] ?? null) {
-                            $indicators['created_from'] = 'Desde ' . Carbon\Carbon::parse($data['created_from'])->format('d/m/Y');
+                            $indicators['created_from'] = 'Desde ' . Carbon::parse($data['created_from'])->format('d/m/Y');
                         }
                         if ($data['created_until'] ?? null) {
-                            $indicators['created_until'] = 'Hasta ' . Carbon\Carbon::parse($data['created_until'])->format('d/m/Y');
+                            $indicators['created_until'] = 'Hasta ' . Carbon::parse($data['created_until'])->format('d/m/Y');
                         }
                         return $indicators;
                     }),
@@ -376,6 +379,7 @@ class SaleResource extends Resource
             ->actions([
                 Tables\Actions\Action::make('generateInvoice')
                     ->tooltip('Generar Factura')
+                    ->label('Factura')
                     ->icon('heroicon-m-document-text')
                     ->color('info')
                     ->url(fn (Sale $record) => route('sales.generate-invoice', $record))
@@ -424,6 +428,63 @@ class SaleResource extends Resource
                         }),
                 ]),
             ]);
+    }
+
+    public static function getHeaderActions(): array
+    {
+        return [
+            Actions\Action::make('exportMonthly')
+                ->label('Reporte Mensual')
+                ->icon('heroicon-o-document-arrow-down')
+                ->action(function () {
+                    return Excel::download(
+                        new SalesExport(now()->startOfMonth(), now()->endOfMonth()),
+                        'ventas-' . now()->format('Y-m') . '.xlsx'
+                    );
+                }),
+
+            Actions\Action::make('exportQuarterly')
+                ->label('Reporte Trimestral')
+                ->icon('heroicon-o-document-arrow-down')
+                ->action(function () {
+                    return Excel::download(
+                        new SalesExport(now()->startOfQuarter(), now()->endOfQuarter()),
+                        'ventas-trimestre-' . now()->quarter . '-' . now()->year . '.xlsx'
+                    );
+                }),
+
+            Actions\Action::make('exportYearly')
+                ->label('Reporte Anual')
+                ->icon('heroicon-o-document-arrow-down')
+                ->action(function () {
+                    return Excel::download(
+                        new SalesExport(now()->startOfYear(), now()->endOfYear()),
+                        'ventas-' . now()->year . '.xlsx'
+                    );
+                }),
+
+            Actions\Action::make('exportCredit')
+                ->label('Exportar Créditos')
+                ->icon('heroicon-o-document-arrow-down')
+                ->color('warning')
+                ->action(function () {
+                    return Excel::download(
+                        new CreditSalesExport(),
+                        'ventas-credito-' . now()->format('Y-m-d') . '.xlsx'
+                    );
+                }),
+
+            Actions\Action::make('exportCash')
+                ->label('Exportar Contado')
+                ->icon('heroicon-o-document-arrow-down')
+                ->color('success')
+                ->action(function () {
+                    return Excel::download(
+                        new CashSalesExport(),
+                        'ventas-contado-' . now()->format('Y-m-d') . '.xlsx'
+                    );
+                }),
+        ];
     }
 
     public static function getPages(): array

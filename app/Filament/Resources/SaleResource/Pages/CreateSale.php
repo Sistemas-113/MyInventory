@@ -19,20 +19,21 @@ class CreateSale extends CreateRecord
     protected function mutateFormDataBeforeCreate(array $data): array
     {
         try {
-            Log::debug('Datos del formulario antes de crear', ['data' => $data]);
-            
             // Validar datos básicos
             $this->validateSaleData($data);
 
             // Asegurarse que details exista y sea array
             if (!isset($data['details']) || !is_array($data['details'])) {
-                $data['details'] = [];
+                throw new \Exception('Debe agregar al menos un producto');
             }
 
             // Formatear los detalles
             $data['details'] = collect($data['details'])
-                ->filter() // Eliminar elementos vacíos
                 ->map(function ($detail) {
+                    if (!isset($detail['purchase_price']) || empty($detail['purchase_price'])) {
+                        throw new \Exception("El precio de compra es requerido para el producto {$detail['product_name']}");
+                    }
+
                     return [
                         'provider_id' => $detail['provider_id'] ?? null,
                         'product_name' => $detail['product_name'] ?? '',
@@ -40,20 +41,16 @@ class CreateSale extends CreateRecord
                         'identifier_type' => $detail['identifier_type'] ?? 'other',
                         'identifier' => $detail['identifier'] ?? '',
                         'quantity' => intval($detail['quantity'] ?? 1),
-                        'unit_price' => floatval(preg_replace('/[^0-9.]/', '', $detail['unit_price'] ?? '0')),
+                        'unit_price' => round(floatval(preg_replace('/[^0-9.]/', '', $detail['unit_price'] ?? '0')), 2),
+                        'purchase_price' => round(floatval(preg_replace('/[^0-9.]/', '', $detail['purchase_price'] ?? '0')), 2),
+                        'subtotal' => round(floatval($detail['quantity'] ?? 1) * floatval(preg_replace('/[^0-9.]/', '', $detail['unit_price'] ?? '0')), 2),
                     ];
                 })
                 ->toArray();
 
-            Log::debug('Datos procesados', ['processed_data' => $data]);
-
             return $data;
         } catch (\Exception $e) {
-            Log::error('Error procesando datos', [
-                'error' => $e->getMessage(),
-                'data' => $data
-            ]);
-            throw $e;
+            throw new \Exception($e->getMessage());
         }
     }
 
@@ -62,8 +59,30 @@ class CreateSale extends CreateRecord
         try {
             DB::beginTransaction();
             
+            // Validar los detalles de productos
+            foreach ($data['details'] as $detail) {
+                if (!isset($detail['purchase_price']) || empty($detail['purchase_price'])) {
+                    throw new \Exception('El precio de compra es requerido para todos los productos');
+                }
+            }
+
+            // Formatear los detalles asegurando el precio de compra
+            $formattedDetails = array_map(function ($detail) {
+                return [
+                    'provider_id' => $detail['provider_id'] ?? null,
+                    'product_name' => $detail['product_name'],
+                    'product_description' => $detail['product_description'] ?? null,
+                    'identifier_type' => $detail['identifier_type'],
+                    'identifier' => $detail['identifier'],
+                    'quantity' => intval($detail['quantity']),
+                    'unit_price' => floatval(preg_replace('/[^0-9.]/', '', $detail['unit_price'])),
+                    'purchase_price' => floatval(preg_replace('/[^0-9.]/', '', $detail['purchase_price'])),
+                    'subtotal' => intval($detail['quantity']) * floatval(preg_replace('/[^0-9.]/', '', $detail['unit_price'])),
+                ];
+            }, $data['details']);
+
             // Calcular subtotal de productos
-            $subtotal = collect($data['details'])->sum(function ($detail) {
+            $subtotal = collect($formattedDetails)->sum(function ($detail) {
                 return floatval($detail['quantity']) * floatval(preg_replace('/[^0-9.]/', '', $detail['unit_price']));
             });
 
@@ -91,12 +110,13 @@ class CreateSale extends CreateRecord
                 'first_payment_date' => $data['first_payment_date'] ?? null,
                 'total_amount' => $totalAmount,  // Asegurar que sea un valor numérico
                 'status' => 'pending',
+                'details' => $formattedDetails
             ]);
 
             // Crear los detalles con valores numéricos validados
-            foreach ($data['details'] as $detail) {
+            foreach ($formattedDetails as $detail) {
                 $price = floatval(preg_replace('/[^0-9.]/', '', $detail['unit_price']));
-                $purchasePrice = floatval(preg_replace('/[^0-9.]/', '', $detail['purchase_price'] ?? '0'));
+                $purchasePrice = floatval(preg_replace('/[^0-9.]/', '', $detail['purchase_price']));
                 $quantity = intval($detail['quantity']);
                 
                 $sale->details()->create([

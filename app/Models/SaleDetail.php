@@ -35,13 +35,15 @@ class SaleDetail extends Model
         
         static::creating(function ($detail) {
             $detail->quantity = $detail->quantity ?? 1;
-            $detail->purchase_price = floatval(preg_replace('/[^0-9.]/', '', $detail->purchase_price));
+            // Asegurar que purchase_price sea un número
+            $detail->purchase_price = floatval(preg_replace('/[^0-9.]/', '', $detail->purchase_price ?? '0'));
             $detail->unit_price = floatval(preg_replace('/[^0-9.]/', '', $detail->unit_price));
             $detail->subtotal = $detail->quantity * $detail->unit_price;
         });
 
         static::updating(function ($detail) {
-            $detail->purchase_price = floatval(preg_replace('/[^0-9.]/', '', $detail->purchase_price));
+            // Asegurar que purchase_price sea un número al actualizar
+            $detail->purchase_price = floatval(preg_replace('/[^0-9.]/', '', $detail->purchase_price ?? '0'));
             $detail->unit_price = floatval(preg_replace('/[^0-9.]/', '', $detail->unit_price));
             $detail->subtotal = $detail->quantity * $detail->unit_price;
         });

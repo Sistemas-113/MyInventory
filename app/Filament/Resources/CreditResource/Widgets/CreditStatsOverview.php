@@ -17,27 +17,42 @@ class CreditStatsOverview extends BaseWidget
             return [];
         }
 
+        // Calcular el total pagado sumando todos los pagos
+        $totalPaid = $this->record->payments()->sum('amount');
+        
+        // Calcular el saldo pendiente
+        $pendingBalance = $this->record->total_amount - $totalPaid;
+
         return [
-            Stat::make('Cuota Inicial', '$ ' . number_format($this->record->initial_payment, 0, ',', '.'))
-                ->description('Pago Inicial')
-                ->descriptionIcon('heroicon-m-banknotes')
-                ->color('success'),
-                
-            Stat::make('Monto Total', '$ ' . number_format($this->record->total_amount, 0, ',', '.'))
-                ->description('Deuda Total')
+            Stat::make('Total Crédito', '$ ' . number_format($this->record->total_amount, 0, ',', '.'))
+                ->description('Valor Total')
                 ->descriptionIcon('heroicon-m-currency-dollar')
                 ->color('danger'),
-                
-            Stat::make('Cuotas Pendientes', "{$this->record->remaining_installments} de {$this->record->installments}")
-                ->description('Próximo pago: $ ' . number_format($this->record->next_payment_amount, 0, ',', '.'))
-                ->descriptionIcon('heroicon-m-calendar')
-                ->chart([3, 2, 1])
+
+            Stat::make('Total Pagado', '$ ' . number_format($totalPaid, 0, ',', '.'))
+                ->description('Pagos Realizados')
+                ->descriptionIcon('heroicon-m-check-circle')
+                ->color('success'),
+
+            Stat::make('Saldo Pendiente', '$ ' . number_format($pendingBalance, 0, ',', '.'))
+                ->description($this->getPaymentProgress($totalPaid, $this->record->total_amount))
+                ->descriptionIcon('heroicon-m-chart-bar')
+                ->chart([
+                    ($totalPaid / $this->record->total_amount) * 100,
+                    ($pendingBalance / $this->record->total_amount) * 100
+                ])
                 ->color('warning'),
 
-            Stat::make('Interés', "{$this->record->interest_rate}%")
-                ->description('Tasa de Interés')
-                ->descriptionIcon('heroicon-m-chart-bar')
+            Stat::make('Próximo Pago', '$ ' . number_format($this->record->next_payment_amount, 0, ',', '.'))
+                ->description('Vence: ' . optional($this->record->next_payment_date)->format('d/m/Y'))
+                ->descriptionIcon('heroicon-m-calendar')
                 ->color('info'),
         ];
+    }
+
+    protected function getPaymentProgress(float $paid, float $total): string
+    {
+        $percentage = ($paid / $total) * 100;
+        return number_format($percentage, 1) . '% Completado';
     }
 }

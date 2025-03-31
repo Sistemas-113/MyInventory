@@ -16,7 +16,7 @@ return new class extends Migration
             $table->string('identifier')->nullable();
             $table->string('product_name');
             $table->text('product_description')->nullable();
-            $table->decimal('purchase_price', 20, 2); // Nuevo campo
+           $table->decimal('purchase_price', 20, 2); // Nuevo campo 
             $table->decimal('unit_price', 20, 2);
             $table->integer('quantity')->default(1);
             $table->decimal('subtotal', 20, 2);
